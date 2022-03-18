@@ -1,88 +1,59 @@
 package com.example.aws;
 
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.waiters.WaiterResponse;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketConfiguration;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
-import software.amazon.awssdk.services.s3.model.DeleteBucketRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.waiters.S3Waiter;
 
+import java.io.File;
 import java.io.IOException;
 
 public class FileUploadExample {
 
   public static void main(String[] args) throws IOException {
 
+    String bucketName = "korzinka-008";
+    String folderName = "photos";
     Region region = Region.US_WEST_2;
-    S3Client s3Client = S3Client.builder().region(region).build();
 
-    String bucket = "bucket" + System.currentTimeMillis();
-    String key = "file1";
+    String fileName = "logo.png";
+    String filePath = "/Users/zhursind/Desktop/mylogo.png";
+    String key = folderName + "/" + fileName;
 
-    tutorialSetup(s3Client, bucket, region);
+    S3Client client = S3Client.builder().region(region).build();
 
-    System.out.println("Uploading object...");
+    client.createBucket(CreateBucketRequest
+        .builder()
+        .bucket(bucketName)
+        .createBucketConfiguration(
+            CreateBucketConfiguration.builder()
+                .locationConstraint(region.id())
+                .build())
+        .build());
 
-    s3Client.putObject(PutObjectRequest.builder().bucket(bucket).key(key)
-            .build(),
-        RequestBody.fromString("Testing with the {sdk-java}"));
+    PutObjectRequest request = PutObjectRequest.builder()
+                                                .bucket(bucketName)
+                                                .key(key)
+                                                .acl("public-read")
+                                                .build();
 
-    System.out.println("Upload complete");
-    System.out.printf("%n");
+    client.putObject(request, RequestBody.fromFile(new File(filePath)));
 
-    //cleanUp(s3Client, bucket, key);
+    S3Waiter waiter = client.waiter();
+    HeadObjectRequest requestWait = HeadObjectRequest.builder().bucket(bucketName).key(key).build();
 
-    System.out.println("Closing the connection to {S3}");
-    s3Client.close();
-    System.out.println("Connection closed");
-    System.out.println("Exiting...");
-    
+    WaiterResponse<HeadObjectResponse> waiterResponse =waiter.waitUntilObjectExists(requestWait);
+
+    waiterResponse.matched().response().ifPresent(System.out::println);
+
+    System.out.println("File " + fileName + " was uploaded.");
+
   }
 
-  public static void tutorialSetup(S3Client s3Client, String bucketName, Region region) {
-    try {
-      s3Client.createBucket(CreateBucketRequest
-          .builder()
-          .bucket(bucketName)
-          .createBucketConfiguration(
-              CreateBucketConfiguration.builder()
-                  .locationConstraint(region.id())
-                  .build())
-          .build());
-      System.out.println("Creating bucket: " + bucketName);
-      s3Client.waiter().waitUntilBucketExists(HeadBucketRequest.builder()
-          .bucket(bucketName)
-          .build());
-      System.out.println(bucketName +" is ready.");
-      System.out.printf("%n");
-    } catch (S3Exception e) {
-      System.err.println(e.awsErrorDetails().errorMessage());
-      System.exit(1);
-    }
-  }
-
-  public static void cleanUp(S3Client s3Client, String bucketName, String keyName) {
-    System.out.println("Cleaning up...");
-    try {
-      System.out.println("Deleting object: " + keyName);
-      DeleteObjectRequest
-          deleteObjectRequest = DeleteObjectRequest.builder().bucket(bucketName).key(keyName).build();
-      s3Client.deleteObject(deleteObjectRequest);
-      System.out.println(keyName +" has been deleted.");
-      System.out.println("Deleting bucket: " + bucketName);
-      DeleteBucketRequest deleteBucketRequest = DeleteBucketRequest.builder().bucket(bucketName).build();
-      s3Client.deleteBucket(deleteBucketRequest);
-      System.out.println(bucketName +" has been deleted.");
-      System.out.printf("%n");
-    } catch (S3Exception e) {
-      System.err.println(e.awsErrorDetails().errorMessage());
-      System.exit(1);
-    }
-    System.out.println("Cleanup complete");
-    System.out.printf("%n");
-  }
 }
